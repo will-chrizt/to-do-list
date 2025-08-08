@@ -1,7 +1,7 @@
 variable "aws_region" {
   description = "The AWS region where the EKS cluster is located."
   type        = string
-  default     = "us-west-2" # Change to your desired region
+  default     = "us-east-1" # Change to your desired region
 }
 
 variable "eks_cluster_name" {
