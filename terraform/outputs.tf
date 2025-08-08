@@ -24,12 +24,3 @@ output "rds_endpoint" {
   value       = aws_db_instance.postgres.address
 }
 
-output "ecr_backend_repo" {
-  description = "ECR backend repository URI"
-  value       = aws_ecr_repository.backend.repository_url
-}
-
-output "ecr_frontend_repo" {
-  description = "ECR frontend repository URI"
-  value       = aws_ecr_repository.frontend.repository_url
-}
