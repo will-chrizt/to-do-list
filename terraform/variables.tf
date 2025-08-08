@@ -55,7 +55,7 @@ variable "image_tag" {
 variable "db_name" {
   description = "Postgres DB name"
   type        = string
-  default     = "appdb"
+  default     = "my_db"
 }
 
 variable "db_username" {
