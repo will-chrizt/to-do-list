@@ -160,7 +160,7 @@ resource "aws_db_instance" "postgres" {
   identifier             = "${var.eks_cluster_name}-postgres"
   allocated_storage      = var.db_allocated_storage
   engine                 = "postgres"
-  engine_version         = "13.13"
+  engine_version         = "13.7"
   instance_class         = "db.t3.micro"
   db_name                   = var.db_name
   username               = var.db_username
