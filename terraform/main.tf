@@ -316,10 +316,20 @@ resource "kubernetes_deployment" "frontend" {
 }
 
 resource "kubernetes_service" "frontend" {
-  metadata { name = "frontend-service" labels = { app = "frontend" } }
+  metadata {
+    name = "frontend-service"
+    labels = {
+      app = "frontend"
+    }
+  }
+
   spec {
-    selector = { app = "frontend" }
-    port { protocol = "TCP" port = 80 target_port = 80 }
-    type = "LoadBalancer"
+    selector = {
+      app = "frontend"
+    }
+    port {
+      port        = 80
+      target_port = 8080
+    }
   }
 }
