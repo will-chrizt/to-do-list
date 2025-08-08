@@ -160,19 +160,22 @@ resource "aws_db_instance" "postgres" {
   identifier             = "${var.eks_cluster_name}-postgres"
   allocated_storage      = var.db_allocated_storage
   engine                 = "postgres"
-  engine_version         = "13.7"
+  engine_version         = "13.21"  # ✅ Updated to a supported version
   instance_class         = "db.t3.micro"
-  db_name                   = var.db_name
+  db_name                = var.db_name
   username               = var.db_username
   password               = var.db_password
   skip_final_snapshot    = true
   publicly_accessible    = true
   db_subnet_group_name   = aws_db_subnet_group.db_subnet.name
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
-  tags = { Name = "${var.eks_cluster_name}-postgres" }
+  tags = {
+    Name = "${var.eks_cluster_name}-postgres"
+  }
 
   depends_on = [aws_db_subnet_group.db_subnet]
 }
+
 
 resource "aws_security_group" "rds_sg" {
   name   = "${var.eks_cluster_name}-rds-sg"
