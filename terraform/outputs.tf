@@ -8,11 +8,7 @@ output "eks_endpoint" {
   value       = aws_eks_cluster.eks.endpoint
 }
 
-output "frontend_lb_hostname" {
-  description = "Frontend LoadBalancer hostname (may take a few minutes)"
-  value       = kubernetes_service.frontend.status[0].load_balancer[0].ingress[0].hostname
-  depends_on  = [kubernetes_service.frontend]
-}
+
 
 output "backend_service_name" {
   description = "Kubernetes backend service name"
