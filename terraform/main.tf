@@ -255,7 +255,7 @@ resource "kubernetes_deployment" "backend" {
       spec {
         container {
           name  = "backend-container"
-          image = "${aws_ecr_repository.backend.repository_url}:${var.image_tag}"
+          image = "public.ecr.aws/n7o2b0o4/backend"
           port { container_port = 5000 }
           env {
             name = "DATABASE_URL"
@@ -307,7 +307,7 @@ resource "kubernetes_deployment" "frontend" {
       spec {
         container {
           name  = "frontend-container"
-          image = "${aws_ecr_repository.frontend.repository_url}:${var.image_tag}"
+          image = "public.ecr.aws/n7o2b0o4/frontend"
           port { container_port = 80 }
         }
       }
