@@ -273,13 +273,24 @@ resource "kubernetes_deployment" "backend" {
 }
 
 resource "kubernetes_service" "backend" {
-  metadata { name = "backend-service" labels = { app = "backend" } }
+  metadata {
+    name = "backend-service"
+    labels = {
+      app = "backend"
+    }
+  }
+
   spec {
-    selector = { app = "backend" }
-    port { protocol = "TCP" port = 5000 target_port = 5000 }
-    type = "ClusterIP"
+    selector = {
+      app = "backend"
+    }
+    port {
+      port        = 80
+      target_port = 8080
+    }
   }
 }
+
 
 # Frontend deployment
 resource "kubernetes_deployment" "frontend" {
