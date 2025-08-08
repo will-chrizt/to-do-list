@@ -59,19 +59,8 @@ resource "aws_route_table_association" "public_assoc" {
 }
 
 # -------------------------
-# ECR Repositories
-# -------------------------
-resource "aws_ecr_repository" "backend" {
-  name                 = var.ecr_repo_backend
-  image_tag_mutability = "MUTABLE"
-  tags = { project = var.eks_cluster_name }
-}
 
-resource "aws_ecr_repository" "frontend" {
-  name                 = var.ecr_repo_frontend
-  image_tag_mutability = "MUTABLE"
-  tags = { project = var.eks_cluster_name }
-}
+
 
 # -------------------------
 # IAM Roles for EKS + Node Group
