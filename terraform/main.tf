@@ -1,173 +1,258 @@
-# Configure the AWS provider
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = ">= 4.0"
+    }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = ">= 2.0"
+    }
+  }
+}
+
 provider "aws" {
   region = var.aws_region
 }
 
-# Data source to retrieve existing EKS cluster details
+# -------------------------
+# Networking: VPC & Public Subnets
+# -------------------------
+data "aws_availability_zones" "available" {}
+
+resource "aws_vpc" "this" {
+  cidr_block           = var.vpc_cidr
+  enable_dns_support   = true
+  enable_dns_hostnames = true
+  tags = { Name = "${var.eks_cluster_name}-vpc" }
+}
+
+resource "aws_internet_gateway" "igw" {
+  vpc_id = aws_vpc.this.id
+  tags   = { Name = "${var.eks_cluster_name}-igw" }
+}
+
+resource "aws_subnet" "public" {
+  count                   = length(var.public_subnet_cidrs)
+  vpc_id                  = aws_vpc.this.id
+  cidr_block              = var.public_subnet_cidrs[count.index]
+  availability_zone       = data.aws_availability_zones.available.names[count.index]
+  map_public_ip_on_launch = true
+  tags = { Name = "${var.eks_cluster_name}-public-${count.index}" }
+}
+
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.this.id
+  tags   = { Name = "${var.eks_cluster_name}-public-rt" }
+}
+
+resource "aws_route" "internet_access" {
+  route_table_id         = aws_route_table.public.id
+  destination_cidr_block = "0.0.0.0/0"
+  gateway_id             = aws_internet_gateway.igw.id
+}
+
+resource "aws_route_table_association" "public_assoc" {
+  count          = length(aws_subnet.public)
+  subnet_id      = aws_subnet.public[count.index].id
+  route_table_id = aws_route_table.public.id
+}
+
+# -------------------------
+# ECR Repositories
+# -------------------------
+resource "aws_ecr_repository" "backend" {
+  name                 = var.ecr_repo_backend
+  image_tag_mutability = "MUTABLE"
+  tags = { project = var.eks_cluster_name }
+}
+
+resource "aws_ecr_repository" "frontend" {
+  name                 = var.ecr_repo_frontend
+  image_tag_mutability = "MUTABLE"
+  tags = { project = var.eks_cluster_name }
+}
+
+# -------------------------
+# IAM Roles for EKS + Node Group
+# -------------------------
+resource "aws_iam_role" "eks_cluster_role" {
+  name = "${var.eks_cluster_name}-cluster-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "eks.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "eks_cluster_attach" {
+  role       = aws_iam_role.eks_cluster_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+}
+
+resource "aws_iam_role" "eks_node_role" {
+  name = "${var.eks_cluster_name}-node-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "ec2.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "node_attach_worker" {
+  role       = aws_iam_role.eks_node_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+}
+
+resource "aws_iam_role_policy_attachment" "node_attach_cni" {
+  role       = aws_iam_role.eks_node_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+}
+
+resource "aws_iam_role_policy_attachment" "node_attach_ecr" {
+  role       = aws_iam_role.eks_node_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
+
+# -------------------------
+# EKS Cluster
+# -------------------------
+resource "aws_eks_cluster" "eks" {
+  name     = var.eks_cluster_name
+  role_arn = aws_iam_role.eks_cluster_role.arn
+
+  vpc_config {
+    subnet_ids = aws_subnet.public[*].id
+    endpoint_public_access = true
+  }
+
+  depends_on = [aws_iam_role_policy_attachment.eks_cluster_attach]
+}
+
+# -------------------------
+# Managed Node Group
+# -------------------------
+resource "aws_eks_node_group" "node_group" {
+  cluster_name    = aws_eks_cluster.eks.name
+  node_group_name = "${var.eks_cluster_name}-ng"
+  node_role_arn   = aws_iam_role.eks_node_role.arn
+  subnet_ids      = aws_subnet.public[*].id
+  instance_types  = [var.instance_type]
+
+  scaling_config {
+    desired_size = var.desired_capacity
+    max_size     = max(1, var.desired_capacity + 1)
+    min_size     = 1
+  }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.node_attach_worker,
+    aws_iam_role_policy_attachment.node_attach_cni,
+    aws_iam_role_policy_attachment.node_attach_ecr
+  ]
+}
+
+# -------------------------
+# RDS Postgres (for demo)
+# -------------------------
+resource "aws_db_subnet_group" "db_subnet" {
+  name       = "${var.eks_cluster_name}-db-subnet"
+  subnet_ids = aws_subnet.public[*].id
+  tags       = { Name = "${var.eks_cluster_name}-db-subnet" }
+}
+
+resource "aws_db_instance" "postgres" {
+  identifier             = "${var.eks_cluster_name}-postgres"
+  allocated_storage      = var.db_allocated_storage
+  engine                 = "postgres"
+  engine_version         = "13.7"
+  instance_class         = "db.t3.micro"
+  name                   = var.db_name
+  username               = var.db_username
+  password               = var.db_password
+  skip_final_snapshot    = true
+  publicly_accessible    = true
+  db_subnet_group_name   = aws_db_subnet_group.db_subnet.name
+  vpc_security_group_ids = [aws_security_group.rds_sg.id]
+  tags = { Name = "${var.eks_cluster_name}-postgres" }
+
+  depends_on = [aws_db_subnet_group.db_subnet]
+}
+
+resource "aws_security_group" "rds_sg" {
+  name   = "${var.eks_cluster_name}-rds-sg"
+  vpc_id = aws_vpc.this.id
+  description = "Allow database access from VPC CIDR (demo)"
+  ingress {
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = var.public_access_cidrs_for_rds
+  }
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  tags = { Name = "${var.eks_cluster_name}-rds-sg" }
+}
+
+# -------------------------
+# Kubernetes provider (after cluster + nodes)
+# -------------------------
 data "aws_eks_cluster" "cluster" {
-  name = var.eks_cluster_name
+  name = aws_eks_cluster.eks.name
 }
 
-# Data source to retrieve authentication token for the EKS cluster
 data "aws_eks_cluster_auth" "cluster" {
-  name = var.eks_cluster_name
+  name = aws_eks_cluster.eks.name
 }
 
-# Configure the Kubernetes provider to connect to the EKS cluster
 provider "kubernetes" {
   host                   = data.aws_eks_cluster.cluster.endpoint
   cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority[0].data)
   token                  = data.aws_eks_cluster_auth.cluster.token
+
+  depends_on = [aws_eks_node_group.node_group]
 }
 
-# -----------------------------------------------------------------------------
-# Kubernetes Secret for Database Credentials
-# This securely stores the database URL for the backend to use.
-# Note: In a real-world scenario, avoid hardcoding passwords directly.
-# Use AWS Secrets Manager or another secret management solution.
-# -----------------------------------------------------------------------------
+# -------------------------
+# Kubernetes resources: secret, backend/frontend deployments, services
+# -------------------------
 resource "kubernetes_secret" "db_credentials" {
-  metadata {
-    name = "db-credentials"
-  }
+  metadata { name = "db-credentials" }
+
   data = {
-    database_url = base64encode("postgresql://${var.db_username}:${var.db_password}@${kubernetes_service.db_service.metadata[0].name}:5432/${var.db_name}")
+    database_url = base64encode("postgresql://${var.db_username}:${var.db_password}@${aws_db_instance.postgres.address}:5432/${var.db_name}")
   }
+
   type = "Opaque"
 }
 
-# -----------------------------------------------------------------------------
-# Kubernetes Persistent Volume Claim for PostgreSQL Database
-# This requests persistent storage for the database data.
-# -----------------------------------------------------------------------------
-resource "kubernetes_persistent_volume_claim" "db_pvc" {
-  metadata {
-    name = "db-pvc"
-  }
-  spec {
-    access_modes = ["ReadWriteOnce"]
-    resources {
-      requests = {
-        storage = "1Gi"
-      }
-    }
-  }
-}
-
-# -----------------------------------------------------------------------------
-# Kubernetes Deployment for PostgreSQL Database
-# Deploys a single replica of the PostgreSQL container.
-# -----------------------------------------------------------------------------
-resource "kubernetes_deployment" "db_deployment" {
-  metadata {
-    name = "db-deployment"
-    labels = {
-      app = "db"
-    }
-  }
-  spec {
-    replicas = 1
-    selector {
-      match_labels = {
-        app = "db"
-      }
-    }
-    template {
-      metadata {
-        labels = {
-          app = "db"
-        }
-      }
-      spec {
-        container {
-          name  = "db-container"
-          image = "postgres:13" # Using a standard PostgreSQL image
-          port {
-            container_port = 5432
-          }
-          env {
-            name  = "POSTGRES_DB"
-            value = var.db_name
-          }
-          env {
-            name  = "POSTGRES_USER"
-            value = var.db_username
-          }
-          env {
-            name  = "POSTGRES_PASSWORD"
-            value = var.db_password
-          }
-          volume_mount {
-            name       = "postgres-storage"
-            mount_path = "/var/lib/postgresql/data"
-          }
-        }
-        volume {
-          name = "postgres-storage"
-          persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim.db_pvc.metadata[0].name
-          }
-        }
-      }
-    }
-  }
-}
-
-# -----------------------------------------------------------------------------
-# Kubernetes Service for PostgreSQL Database
-# Creates an internal ClusterIP service for the backend to connect to the DB.
-# -----------------------------------------------------------------------------
-resource "kubernetes_service" "db_service" {
-  metadata {
-    name = "db-service"
-    labels = {
-      app = "db"
-    }
-  }
-  spec {
-    selector = {
-      app = "db"
-    }
-    port {
-      protocol    = "TCP"
-      port        = 5432
-      target_port = 5432
-    }
-    type = "ClusterIP"
-  }
-}
-
-# -----------------------------------------------------------------------------
-# Kubernetes Deployment for Backend Service (Flask App)
-# Deploys multiple replicas of your Flask application.
-# -----------------------------------------------------------------------------
-resource "kubernetes_deployment" "backend_deployment" {
+# Backend deployment
+resource "kubernetes_deployment" "backend" {
   metadata {
     name = "backend-deployment"
-    labels = {
-      app = "backend"
-    }
+    labels = { app = "backend" }
   }
+
   spec {
     replicas = 2
-    selector {
-      match_labels = {
-        app = "backend"
-      }
-    }
+    selector { match_labels = { app = "backend" } }
     template {
-      metadata {
-        labels = {
-          app = "backend"
-        }
-      }
+      metadata { labels = { app = "backend" } }
       spec {
         container {
           name  = "backend-container"
-          image = "${var.ecr_registry_url}/${var.ecr_repo_backend}:${var.image_tag}"
-          port {
-            container_port = 5000
-          }
+          image = "${aws_ecr_repository.backend.repository_url}:${var.image_tag}"
+          port { container_port = 5000 }
           env {
             name = "DATABASE_URL"
             value_from {
@@ -183,202 +268,43 @@ resource "kubernetes_deployment" "backend_deployment" {
   }
 }
 
-# -----------------------------------------------------------------------------
-# Kubernetes Service for Backend Service
-# Creates an internal ClusterIP service for the frontend to connect to the backend.
-# -----------------------------------------------------------------------------
-resource "kubernetes_service" "backend_service" {
-  metadata {
-    name = "backend-service"
-    labels = {
-      app = "backend"
-    }
-  }
+resource "kubernetes_service" "backend" {
+  metadata { name = "backend-service" labels = { app = "backend" } }
   spec {
-    selector = {
-      app = "backend"
-    }
-    port {
-      protocol    = "TCP"
-      port        = 5000
-      target_port = 5000
-    }
+    selector = { app = "backend" }
+    port { protocol = "TCP" port = 5000 target_port = 5000 }
     type = "ClusterIP"
   }
 }
 
-# -----------------------------------------------------------------------------
-# Kubernetes Deployment for Frontend Service (Nginx App)
-# Deploys multiple replicas of your Nginx frontend application.
-# -----------------------------------------------------------------------------
-resource "kubernetes_deployment" "frontend_deployment" {
+# Frontend deployment
+resource "kubernetes_deployment" "frontend" {
   metadata {
     name = "frontend-deployment"
-    labels = {
-      app = "frontend"
-    }
+    labels = { app = "frontend" }
   }
+
   spec {
     replicas = 2
-    selector {
-      match_labels = {
-        app = "frontend"
-      }
-    }
+    selector { match_labels = { app = "frontend" } }
     template {
-      metadata {
-        labels = {
-          app = "frontend"
-        }
-      }
+      metadata { labels = { app = "frontend" } }
       spec {
         container {
           name  = "frontend-container"
-          image = "${var.ecr_registry_url}/${var.ecr_repo_frontend}:${var.image_tag}"
-          port {
-            container_port = 80
-          }
+          image = "${aws_ecr_repository.frontend.repository_url}:${var.image_tag}"
+          port { container_port = 80 }
         }
       }
     }
   }
 }
 
-# -----------------------------------------------------------------------------
-# Kubernetes Service for Frontend Service
-# Creates an AWS Load Balancer to expose the frontend to the internet.
-# -----------------------------------------------------------------------------
-resource "kubernetes_service" "frontend_service" {
-  metadata {
-    name = "frontend-service"
-    labels = {
-      app = "frontend"
-    }
-  }
+resource "kubernetes_service" "frontend" {
+  metadata { name = "frontend-service" labels = { app = "frontend" } }
   spec {
-    selector = {
-      app = "frontend"
-    }
-    port {
-      protocol    = "TCP"
-      port        = 80
-      target_port = 80
-    }
+    selector = { app = "frontend" }
+    port { protocol = "TCP" port = 80 target_port = 80 }
     type = "LoadBalancer"
   }
-}
-
-
-
-######################################
-# EKS infra additions (VPC, IAM, EKS)
-######################################
-data "aws_availability_zones" "available" {}
-
-resource "aws_vpc" "eks_vpc" {
-  cidr_block           = "10.0.0.0/16"
-  enable_dns_support   = true
-  enable_dns_hostnames = true
-  tags = { Name = "eks-vpc" }
-}
-
-resource "aws_subnet" "eks_subnet" {
-  count                   = 2
-  vpc_id                  = aws_vpc.eks_vpc.id
-  cidr_block              = cidrsubnet(aws_vpc.eks_vpc.cidr_block, 8, count.index)
-  map_public_ip_on_launch = true
-  availability_zone       = data.aws_availability_zones.available.names[count.index]
-  tags = { Name = "eks-subnet-${count.index}" }
-}
-
-resource "aws_iam_role" "eks_cluster_role" {
-  name = "${var.eks_cluster_name}-cluster-role"
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Principal = { Service = "eks.amazonaws.com" }
-      Action = "sts:AssumeRole"
-    }]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "eks_cluster_AmazonEKSClusterPolicy" {
-  role       = aws_iam_role.eks_cluster_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
-}
-
-resource "aws_iam_role" "eks_node_role" {
-  name = "${var.eks_cluster_name}-node-role"
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Principal = { Service = "ec2.amazonaws.com" }
-      Action = "sts:AssumeRole"
-    }]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "eks_node_AmazonEKSWorkerNodePolicy" {
-  role       = aws_iam_role.eks_node_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
-}
-
-resource "aws_iam_role_policy_attachment" "eks_node_AmazonEKS_CNI_Policy" {
-  role       = aws_iam_role.eks_node_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
-}
-
-resource "aws_iam_role_policy_attachment" "eks_node_AmazonEC2ContainerRegistryReadOnly" {
-  role       = aws_iam_role.eks_node_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
-}
-
-resource "aws_eks_cluster" "eks" {
-  name     = var.eks_cluster_name
-  role_arn = aws_iam_role.eks_cluster_role.arn
-
-  vpc_config {
-    subnet_ids = aws_subnet.eks_subnet[*].id
-  }
-
-  depends_on = [aws_iam_role_policy_attachment.eks_cluster_AmazonEKSClusterPolicy]
-}
-
-resource "aws_eks_node_group" "eks_nodes" {
-  cluster_name    = aws_eks_cluster.eks.name
-  node_group_name = "${var.eks_cluster_name}-node-group"
-  node_role_arn   = aws_iam_role.eks_node_role.arn
-  subnet_ids      = aws_subnet.eks_subnet[*].id
-  instance_types  = ["t3.medium"]
-
-  scaling_config {
-    desired_size = 2
-    max_size     = 3
-    min_size     = 1
-  }
-
-  depends_on = [
-    aws_iam_role_policy_attachment.eks_node_AmazonEKSWorkerNodePolicy,
-    aws_iam_role_policy_attachment.eks_node_AmazonEKS_CNI_Policy,
-    aws_iam_role_policy_attachment.eks_node_AmazonEC2ContainerRegistryReadOnly
-  ]
-}
-
-# Kubernetes provider wiring (waits for node group)
-data "aws_eks_cluster" "cluster" {
-  name = aws_eks_cluster.eks.name
-}
-
-data "aws_eks_cluster_auth" "cluster" {
-  name = aws_eks_cluster.eks.name
-}
-
-provider "kubernetes" {
-  host                   = data.aws_eks_cluster.cluster.endpoint
-  cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority[0].data)
-  token                  = data.aws_eks_cluster_auth.cluster.token
-
-  depends_on = [aws_eks_node_group.eks_nodes]
 }
