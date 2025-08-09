@@ -223,14 +223,17 @@ data "aws_eks_cluster_auth" "eks" {
 # Kubernetes resources: secret, backend/frontend deployments, services
 # -------------------------
 resource "kubernetes_secret" "db_credentials" {
-  metadata { name = "db-credentials" }
+  metadata {
+    name = "db-credentials"
+  }
 
-  data = {
-    database_url = base64encode("postgresql://${var.db_username}:${var.db_password}@${aws_db_instance.postgres.address}:5432/${var.db_name}")
+  string_data = {
+    database_url = "postgresql://${var.db_username}:${var.db_password}@${aws_db_instance.postgres.address}:5432/${var.db_name}"
   }
 
   type = "Opaque"
 }
+
 
 # Backend deployment
 resource "kubernetes_deployment" "backend" {
