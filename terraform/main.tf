@@ -263,7 +263,6 @@ resource "kubernetes_deployment" "backend" {
     }
   }
 }
-
 resource "kubernetes_service" "backend" {
   metadata {
     name = "backend-service"
@@ -274,11 +273,47 @@ resource "kubernetes_service" "backend" {
 
   spec {
     selector = {
-      app = "backend"
+      app = kubernetes_deployment.backend.spec[0].template[0].metadata[0].labels.app
     }
+
     port {
-      port        = 80
-      target_port = 8080
+      port        = 80        # Service port
+      target_port = 5000      # Container port
+    }
+
+    type = "ClusterIP"
+  }
+}
+
+resource "kubernetes_ingress_v1" "backend" {
+  metadata {
+    name = "backend-ingress"
+    annotations = {
+      "nginx.ingress.kubernetes.io/rewrite-target" = "/"
+    }
+  }
+
+  spec {
+    ingress_class_name = "nginx"
+
+    rule {
+      host = "backend.example.com" # Change this to your domain or add in /etc/hosts
+
+      http {
+        path {
+          path      = "/"
+          path_type = "Prefix"
+
+          backend {
+            service {
+              name = kubernetes_service.backend.metadata[0].name
+              port {
+                number = 80
+              }
+            }
+          }
+        }
+      }
     }
   }
 }
