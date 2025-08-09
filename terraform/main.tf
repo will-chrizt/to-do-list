@@ -273,7 +273,7 @@ resource "kubernetes_service" "backend" {
 
   spec {
     selector = {
-      app = kubernetes_deployment.backend.spec[0].template[0].metadata[0].labels.app
+      app = backend
     }
 
     port {
@@ -285,38 +285,6 @@ resource "kubernetes_service" "backend" {
   }
 }
 
-resource "kubernetes_ingress_v1" "backend" {
-  metadata {
-    name = "backend-ingress"
-    annotations = {
-      "nginx.ingress.kubernetes.io/rewrite-target" = "/"
-    }
-  }
-
-  spec {
-    ingress_class_name = "nginx"
-
-    rule {
-      host = "backend.example.com" # Change this to your domain or add in /etc/hosts
-
-      http {
-        path {
-          path      = "/"
-          path_type = "Prefix"
-
-          backend {
-            service {
-              name = kubernetes_service.backend.metadata[0].name
-              port {
-                number = 80
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
 
 
 # Frontend deployment
