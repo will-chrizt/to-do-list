@@ -2,7 +2,22 @@ const todoList = document.getElementById('todo-list');
 const newTodoInput = document.getElementById('new-todo-input');
 const addTodoButton = document.getElementById('add-todo-button');
 
-const API_URL = 'http://localhost:5000/api/todos';
+let API_URL = '/api/todos'; // Default fallback URL
+
+// Load backend URL from config.json at runtime
+async function loadConfig() {
+    try {
+        const res = await fetch('/config.json');
+        if (res.ok) {
+            const config = await res.json();
+            if (config.backendUrl) {
+                API_URL = config.backendUrl;
+            }
+        }
+    } catch (error) {
+        console.warn('Could not load config.json, using default API_URL');
+    }
+}
 
 // Fetch and render to-do items
 async function fetchTodos() {
@@ -57,5 +72,8 @@ async function deleteTodo(id) {
 // Add event listener to the button
 addTodoButton.addEventListener('click', addTodo);
 
-// Initial fetch of todos when the page loads
-fetchTodos();
+// Load config and then fetch todos once config loaded
+loadConfig().then(() => {
+    fetchTodos();
+});
+// Ensure the API URL is set correctly
