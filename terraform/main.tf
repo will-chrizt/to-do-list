@@ -456,7 +456,7 @@ resource "helm_release" "aws_load_balancer_controller" {
 
 
 # Map the IAM role to the Kubernetes system:masters group
-resource "aws_eks_cluster_auth" "current" {
+data "aws_eks_cluster_auth" "current" {
   cluster_name = aws_eks_cluster.eks.name
 }
 
