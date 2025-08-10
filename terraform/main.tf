@@ -489,9 +489,7 @@ resource "kubernetes_config_map" "aws_auth" {
 }
 
 
-data "aws_eks_cluster_auth" "current" {
-  name = aws_eks_cluster.eks.name
-}
+
 
 resource "kubernetes_config_map" "aws_auth" {
   metadata {
