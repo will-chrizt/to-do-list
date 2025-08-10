@@ -215,7 +215,7 @@ provider "kubernetes" {
 }
 
 
-
+/*
 # -------------------------
 # Kubernetes resources: secret, backend/frontend deployments, services
 # -------------------------
@@ -325,6 +325,7 @@ resource "kubernetes_service" "frontend" {
     type = "LoadBalancer"        
   }
 }
+*/
 
 /*
 
