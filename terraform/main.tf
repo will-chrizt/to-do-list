@@ -288,11 +288,11 @@ resource "kubernetes_ingress_v1" "app_alb_ingress" {
     name      = "app-alb-ingress"
     namespace = "default"
     annotations = {
-      kubernetes.io/ingress.class                = "alb"
-      alb.ingress.kubernetes.io/scheme           = "internet-facing"
-      alb.ingress.kubernetes.io/target-type      = "ip"
-      alb.ingress.kubernetes.io/listen-ports     = "[{\"HTTP\":80}]"
-      alb.ingress.kubernetes.io/group.name       = "app-group"
+      "kubernetes.io/ingress.class"               = "alb"
+      "alb.ingress.kubernetes.io/scheme"          = "internet-facing"
+      "alb.ingress.kubernetes.io/target-type"     = "ip"
+      "alb.ingress.kubernetes.io/listen-ports"    = "[{\"HTTP\":80}]"
+      "alb.ingress.kubernetes.io/group.name"      = "app-group"
     }
   }
 
@@ -328,7 +328,6 @@ resource "kubernetes_ingress_v1" "app_alb_ingress" {
     }
   }
 }
-
 
 
 
