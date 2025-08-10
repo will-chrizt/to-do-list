@@ -328,4 +328,48 @@ resource "kubernetes_service" "frontend" {
     }
     type = "LoadBalancer"
   }
+
+
+resource "kubernetes_ingress_v1" "app_ingress" {
+  metadata {
+    name      = "app-ingress"
+    namespace = "default"
+    annotations = {
+      kubernetes.io/ingress.class = "nginx"
+      nginx.ingress.kubernetes.io/rewrite-target = "/$1"
+    }
+  }
+
+  spec {
+    rule {
+      http {
+        path {
+          path     = "/api/(.*)"
+          path_type = "Prefix"
+          backend {
+            service {
+              name = "backend-service"
+              port {
+                number = 5000
+              }
+            }
+          }
+        }
+
+        path {
+          path     = "/(.*)"
+          path_type = "Prefix"
+          backend {
+            service {
+              name = "frontend-service"
+              port {
+                number = 80
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 }
+
