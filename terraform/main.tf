@@ -375,20 +375,24 @@ resource "kubernetes_service" "frontend" {
 
 # Add the EKS OIDC provider to your cluster
 resource "aws_eks_identity_provider_config" "oidc_provider" {
-  cluster_name     = aws_eks_cluster.eks.name
+  cluster_name                  = aws_eks_cluster.eks.name
+  identity_provider_config_name = "${aws_eks_cluster.eks.name}-oidc"
+
   oidc {
-    issuer_url    = aws_eks_cluster.eks.identity[0].oidc[0].issuer
-    client_id     = "sts.amazonaws.com"
+    issuer_url = aws_eks_cluster.eks.identity[0].oidc[0].issuer
+    client_id  = "sts.amazonaws.com"
   }
 }
 
 # -------------------------------------------------------------
 # IAM Role and Policy for the AWS Load Balancer Controller
 # -------------------------------------------------------------
+data "aws_caller_identity" "current" {}
+
 resource "aws_iam_policy" "alb_controller" {
   name        = "${var.eks_cluster_name}-alb-controller-policy"
   description = "IAM policy for the AWS Load Balancer Controller."
-  policy      = file("iam_policy.json") # You need to create this JSON file
+  policy      = file("iam_policy.json") # Ensure iam_policy.json exists
 }
 
 resource "aws_iam_role" "alb_controller" {
@@ -427,27 +431,25 @@ resource "helm_release" "aws_load_balancer_controller" {
   repository       = "https://aws.github.io/eks-charts"
   chart            = "aws-load-balancer-controller"
   namespace        = "kube-system"
-  version          = "1.4.0" # Specify the correct version
+  version          = "1.4.0"
   create_namespace = false
 
-  set {
-    name  = "clusterName"
-    value = aws_eks_cluster.eks.name
-  }
-
-  set {
-    name  = "serviceAccount.create"
-    value = "true"
-  }
-
-  set {
-    name  = "serviceAccount.name"
-    value = "aws-load-balancer-controller"
-  }
-
-  # This is the crucial part that links the Helm chart to the IAM role
-  set {
-    name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-    value = aws_iam_role.alb_controller.arn
-  }
+  set = [
+    {
+      name  = "clusterName"
+      value = aws_eks_cluster.eks.name
+    },
+    {
+      name  = "serviceAccount.create"
+      value = "true"
+    },
+    {
+      name  = "serviceAccount.name"
+      value = "aws-load-balancer-controller"
+    },
+    {
+      name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
+      value = aws_iam_role.alb_controller.arn
+    },
+  ]
 }
