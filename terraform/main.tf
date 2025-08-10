@@ -372,3 +372,82 @@ resource "kubernetes_service" "frontend" {
 }
 
 
+
+# Add the EKS OIDC provider to your cluster
+resource "aws_eks_identity_provider_config" "oidc_provider" {
+  cluster_name     = aws_eks_cluster.eks.name
+  oidc {
+    issuer_url    = aws_eks_cluster.eks.identity[0].oidc[0].issuer
+    client_id     = "sts.amazonaws.com"
+  }
+}
+
+# -------------------------------------------------------------
+# IAM Role and Policy for the AWS Load Balancer Controller
+# -------------------------------------------------------------
+resource "aws_iam_policy" "alb_controller" {
+  name        = "${var.eks_cluster_name}-alb-controller-policy"
+  description = "IAM policy for the AWS Load Balancer Controller."
+  policy      = file("iam_policy.json") # You need to create this JSON file
+}
+
+resource "aws_iam_role" "alb_controller" {
+  name = "${var.eks_cluster_name}-alb-controller-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Federated = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/${replace(aws_eks_cluster.eks.identity[0].oidc[0].issuer, "https://", "")}"
+        }
+        Action = "sts:AssumeRoleWithWebIdentity"
+        Condition = {
+          StringEquals = {
+            "${replace(aws_eks_cluster.eks.identity[0].oidc[0].issuer, "https://", "")}:sub" : "system:serviceaccount:kube-system:aws-load-balancer-controller",
+            "${replace(aws_eks_cluster.eks.identity[0].oidc[0].issuer, "https://", "")}:aud" : "sts.amazonaws.com"
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "alb_controller_attach" {
+  role       = aws_iam_role.alb_controller.name
+  policy_arn = aws_iam_policy.alb_controller.arn
+}
+
+# -------------------------------------------------------------
+# Helm Release for the AWS Load Balancer Controller
+# -------------------------------------------------------------
+resource "helm_release" "aws_load_balancer_controller" {
+  name             = "aws-load-balancer-controller"
+  repository       = "https://aws.github.io/eks-charts"
+  chart            = "aws-load-balancer-controller"
+  namespace        = "kube-system"
+  version          = "1.4.0" # Specify the correct version
+  create_namespace = false
+
+  set {
+    name  = "clusterName"
+    value = aws_eks_cluster.eks.name
+  }
+
+  set {
+    name  = "serviceAccount.create"
+    value = "true"
+  }
+
+  set {
+    name  = "serviceAccount.name"
+    value = "aws-load-balancer-controller"
+  }
+
+  # This is the crucial part that links the Helm chart to the IAM role
+  set {
+    name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
+    value = aws_iam_role.alb_controller.arn
+  }
+}
