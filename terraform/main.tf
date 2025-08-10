@@ -331,13 +331,16 @@ resource "kubernetes_service" "frontend" {
   }
 
 
-resource "kubernetes_ingress_v1" "app_ingress" {
+resource "kubernetes_ingress_v1" "app_alb_ingress" {
   metadata {
-    name      = "app-ingress"
+    name      = "app-alb-ingress"
     namespace = "default"
     annotations = {
-      kubernetes.io/ingress.class = "nginx"
-      nginx.ingress.kubernetes.io/rewrite-target = "/$1"
+      kubernetes.io/ingress.class                         = "alb"
+      alb.ingress.kubernetes.io/scheme                   = "internet-facing"
+      alb.ingress.kubernetes.io/target-type              = "ip"
+      alb.ingress.kubernetes.io/listen-ports             = "[{\"HTTP\":80}]"
+      alb.ingress.kubernetes.io/group.name               = "app-group"
     }
   }
 
@@ -345,7 +348,7 @@ resource "kubernetes_ingress_v1" "app_ingress" {
     rule {
       http {
         path {
-          path     = "/api/(.*)"
+          path      = "/api/*"
           path_type = "Prefix"
           backend {
             service {
@@ -358,7 +361,7 @@ resource "kubernetes_ingress_v1" "app_ingress" {
         }
 
         path {
-          path     = "/(.*)"
+          path      = "/*"
           path_type = "Prefix"
           backend {
             service {
@@ -373,4 +376,3 @@ resource "kubernetes_ingress_v1" "app_ingress" {
     }
   }
 }
-
