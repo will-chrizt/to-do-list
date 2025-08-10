@@ -493,4 +493,4 @@ resource "kubernetes_config_map" "aws_auth" {
     aws_eks_node_group.node_group
   ]
 }
-
+*/
