@@ -1,4 +1,4 @@
-output "eks_cluster_name" {
+/*output "eks_cluster_name" {
   description = "EKS cluster name"
   value       = aws_eks_cluster.eks.name
 }
@@ -20,3 +20,4 @@ output "rds_endpoint" {
   value       = aws_db_instance.postgres.address
 }
 
+*/
