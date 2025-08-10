@@ -276,7 +276,7 @@ resource "kubernetes_service" "backend" {
       port        = 80        # Cluster port
       target_port = 5000      # Container port
     }
-    type = "ClusterIP"        # Internal only
+    type = "LoadBalancer"     
   }
 }
 
@@ -367,11 +367,59 @@ resource "kubernetes_service" "frontend" {
       port        = 80
       target_port = 80
     }
-    type = "ClusterIP"        # Internal only
+    type = "LoadBalancer"        
   }
 }
 
+/*
 
+
+# Ingress for ALB
+resource "kubernetes_ingress_v1" "app_alb_ingress" {
+  metadata {
+    name      = "app-alb-ingress"
+    namespace = "default"
+    annotations = {
+      "kubernetes.io/ingress.class"               = "alb"
+      "alb.ingress.kubernetes.io/scheme"          = "internet-facing"
+      "alb.ingress.kubernetes.io/target-type"     = "ip"
+      "alb.ingress.kubernetes.io/listen-ports"    = "[{\"HTTP\":80}]"
+      "alb.ingress.kubernetes.io/group.name"      = "app-group"
+    }
+  }
+
+  spec {
+    rule {
+      http {
+        path {
+          path      = "/api/"
+          path_type = "Prefix"
+          backend {
+            service {
+              name = kubernetes_service.backend.metadata[0].name
+              port {
+                number = 80
+              }
+            }
+          }
+        }
+
+        path {
+          path      = "/"
+          path_type = "Prefix"
+          backend {
+            service {
+              name = kubernetes_service.frontend.metadata[0].name
+              port {
+                number = 80
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
 
 # Add the EKS OIDC provider to your cluster
 resource "aws_eks_identity_provider_config" "oidc_provider" {
@@ -493,3 +541,4 @@ resource "kubernetes_config_map" "aws_auth" {
     aws_eks_node_group.node_group
   ]
 }
+*/
