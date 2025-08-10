@@ -282,52 +282,7 @@ resource "kubernetes_service" "backend" {
 
 
 
-# Ingress for ALB
-resource "kubernetes_ingress_v1" "app_alb_ingress" {
-  metadata {
-    name      = "app-alb-ingress"
-    namespace = "default"
-    annotations = {
-      "kubernetes.io/ingress.class"               = "alb"
-      "alb.ingress.kubernetes.io/scheme"          = "internet-facing"
-      "alb.ingress.kubernetes.io/target-type"     = "ip"
-      "alb.ingress.kubernetes.io/listen-ports"    = "[{\"HTTP\":80}]"
-      "alb.ingress.kubernetes.io/group.name"      = "app-group"
-    }
-  }
 
-  spec {
-    rule {
-      http {
-        path {
-          path      = "/api/"
-          path_type = "Prefix"
-          backend {
-            service {
-              name = kubernetes_service.backend.metadata[0].name
-              port {
-                number = 80
-              }
-            }
-          }
-        }
-
-        path {
-          path      = "/"
-          path_type = "Prefix"
-          backend {
-            service {
-              name = kubernetes_service.frontend.metadata[0].name
-              port {
-                number = 80
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
 
 
 
@@ -541,4 +496,4 @@ resource "kubernetes_config_map" "aws_auth" {
     aws_eks_node_group.node_group
   ]
 }
-*/
+
