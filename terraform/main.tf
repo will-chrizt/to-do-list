@@ -375,12 +375,12 @@ resource "kubernetes_service" "frontend" {
 
 # Add the EKS OIDC provider to your cluster
 resource "aws_eks_identity_provider_config" "oidc_provider" {
-  cluster_name                  = aws_eks_cluster.eks.name
-  identity_provider_config_name = "${aws_eks_cluster.eks.name}-oidc"
+  cluster_name = aws_eks_cluster.eks.name
 
   oidc {
-    issuer_url = aws_eks_cluster.eks.identity[0].oidc[0].issuer
-    client_id  = "sts.amazonaws.com"
+    identity_provider_config_name = "${aws_eks_cluster.eks.name}-oidc" # Correct position
+    issuer_url                    = aws_eks_cluster.eks.identity[0].oidc[0].issuer
+    client_id                     = "sts.amazonaws.com"
   }
 }
 
