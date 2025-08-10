@@ -328,6 +328,7 @@ resource "kubernetes_service" "frontend" {
     }
     type = "LoadBalancer"
   }
+  }
 
 
 resource "kubernetes_ingress_v1" "app_ingress" {
