@@ -196,15 +196,18 @@ resource "aws_security_group" "rds_sg" {
 # -------------------------
 # Kubernetes provider (after cluster + nodes)
 # -------------------------
+# Get cluster info
 data "aws_eks_cluster" "eks" {
   name = aws_eks_cluster.eks.name
 }
 
+# Get cluster authentication token
 data "aws_eks_cluster_auth" "eks" {
   name = aws_eks_cluster.eks.name
-  depends_on = [aws_eks_node_group.node_group] # Wait until nodes are up
+  depends_on = [aws_eks_node_group.node_group]
 }
 
+# Kubernetes provider (connects to EKS API directly)
 provider "kubernetes" {
   host                   = data.aws_eks_cluster.eks.endpoint
   cluster_ca_certificate = base64decode(data.aws_eks_cluster.eks.certificate_authority[0].data)
