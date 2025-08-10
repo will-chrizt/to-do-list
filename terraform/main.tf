@@ -302,7 +302,7 @@ resource "kubernetes_deployment" "frontend" {
       spec {
         container {
           name  = "frontend-container"
-          image = "public.ecr.aws/n7o2b0o4/frontend"
+          image = "public.ecr.aws/n7o2b0o4/frontend:latest"
           port { container_port = 80 }
         }
       }
