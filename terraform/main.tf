@@ -487,3 +487,37 @@ resource "kubernetes_config_map" "aws_auth" {
     aws_eks_node_group.node_group
   ]
 }
+
+
+data "aws_eks_cluster_auth" "current" {
+  name = aws_eks_cluster.eks.name
+}
+
+resource "kubernetes_config_map" "aws_auth" {
+  metadata {
+    name      = "aws-auth"
+    namespace = "kube-system"
+  }
+
+  data = {
+    mapRoles = yamlencode([
+      # This entry maps your EKS node group's role to the node groups
+      {
+        rolearn  = aws_iam_role.eks_node_role.arn
+        username = "system:node:{{EC2PrivateDNSName}}"
+        groups   = ["system:bootstrappers", "system:nodes"]
+      },
+      # This entry maps the role running Terraform to the system:masters group
+      {
+        rolearn  = aws_iam_role.eks_cluster_role.arn
+        username = "terraform-admin" # a human-readable username for the role
+        groups   = ["system:masters"]
+      }
+    ])
+  }
+
+  depends_on = [
+    aws_eks_cluster.eks,
+    aws_eks_node_group.node_group
+  ]
+}
